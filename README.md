@@ -1,8 +1,8 @@
 # Raspberry Pi Pico AlphaESS api
 Project using an rp2040/rp2340 and w5500 Ethernet to read live solar panel performance data from open.alphaess.com api and displaying it.
 
-![Control Box](https://github.com/Jannis-L/AlphaESS/IMG_Control.jpg "Control Box")
-![Screen Box](https://github.com/Jannis-L/AlphaESS/IMG_Screen.jpg "Screen Box")
+![Control Box](https://github.com/Jannis-L/AlphaESS/images/IMG_Control.jpg "Control Box")
+![Screen Box](https://github.com/Jannis-L/AlphaESS/images/IMG_Screen.jpg "Screen Box")
 The display is mounted in a light switch box.
 While this version does not yet implement the display, it demonstrates how to access the alphaess or similar apis from within the raspberry pi c-sdk and the w5500 Ethernet Chip library supplied by its vendor. The extra connections on the controller are currently utilized to switch a circulation pump and override temperature readings of a non ethernet enabled heating system.
 
