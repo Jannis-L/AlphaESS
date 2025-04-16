@@ -42,6 +42,7 @@
         "wiznet_spi_pio.h": "c",
         "wiznet_spi.h": "c",
         "clocks.h": "c",
-        "cstdint": "c"
+        "cstdint": "c",
+        "sha512.h": "c"
     }
 }

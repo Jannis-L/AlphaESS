@@ -1,14 +1,10 @@
 /**
- * Copyright (c) 2021 WIZnet Co.,Ltd
- *
- * SPDX-License-Identifier: BSD-3-Clause
+ * Jannis Lämmle
+ * March 2025
+ * To access the open.alphaess.com api using rp2040/2350 and w5500 ethernet module
+ * Partially adapted from WIZnet Co.,Ltd, BSD-3-Clause
  */
 
-/**
- * ----------------------------------------------------------------------------------------------------
- * Includes
- * ----------------------------------------------------------------------------------------------------
- */
 #include <stdio.h>
 
 #include "port_common.h"
@@ -23,24 +19,18 @@
 
 #include "mbedtls/sha512.h"
 
-#include "timer.h"
 #include "time.h"
 
 #include "string.h"
 
-// Containing #define APP_ID "xyz" and #define APP_SECRET "xyz"
+// Contains:
+// #pragma once
+// #define APP_ID "xyz"
+// #define APP_SECRET "xyz"
+// #define APP_SN "xyz"
 #include "secrets.h"
 
-/**
- * ----------------------------------------------------------------------------------------------------
- * Macros
- * ----------------------------------------------------------------------------------------------------
- */
-
-/* Buffer */
-#define ETHERNET_BUF_MAX_SIZE (1024 * 2)
-
-/* Socket */
+// Socket usages (8 Sockets available on W5500)
 #define SOCKET_DHCP 0
 #define SOCKET_DNS 1
 #define SOCKET_SNTP 2
@@ -48,19 +38,14 @@
 
 /* Retry count */
 #define DHCP_RETRY_COUNT 5
-#define DNS_RETRY_COUNT 5
-#define RECV_TIMEOUT (1000 * 10) // 10 seconds
+#define RECV_TIMEOUT 10000000 // 10 seconds
 
-/* Timezone */
+/* NTP */
 #define TIMEZONE 21 // UTC
+// The timeserver to use
 static uint8_t g_sntp_server_ip[4] = {216, 239, 35, 0}; // time.google.com
 
-/**
- * ----------------------------------------------------------------------------------------------------
- * Variables
- * ----------------------------------------------------------------------------------------------------
- */
-/* Network */
+// Default Network settings
 static wiz_NetInfo g_net_info =
 {
     .mac = {0x00, 0x08, 0xDC, 0x12, 0x34, 0x56}, // MAC address
@@ -70,47 +55,30 @@ static wiz_NetInfo g_net_info =
     .dns = {8, 8, 8, 8},                         // DNS server
     .dhcp = NETINFO_DHCP                         // DHCP enable/disable
 };
-static uint8_t g_ethernet_buf[ETHERNET_BUF_MAX_SIZE] = {
-    0,
-}; // common buffer
 
 /* DHCP */
 static uint8_t g_dhcp_get_ip_flag = 0;
 
 /* DNS */
 static uint8_t g_dns_target_domain[] = "openapi.alphaess.com";
-static uint8_t g_http_target_uri[] = "/api/getLastPowerData?sysSn=ALA001021120196";
-static uint8_t g_dns_target_ip[4] = {
-    0,
-};
-static uint8_t g_dns_get_ip_flag = 0;
+static uint8_t g_http_target_uri[] = "/api/getLastPowerData?sysSn=" APP_SN;
+static uint8_t g_dns_target_ip[4] = { 0, };
 
-/* DHCP */
-
-/* SNTP */
-static uint8_t g_sntp_buf[ETHERNET_BUF_MAX_SIZE] = {
-    0,
-};
-
-/* HTTP */
-static uint8_t g_http_r_buf[ETHERNET_BUF_MAX_SIZE] = {
-    0,
-};
-static uint8_t g_http_s_buf[ETHERNET_BUF_MAX_SIZE] = {
-    0,
-};
-static uint8_t g_http_h_buf[ETHERNET_BUF_MAX_SIZE] = {
-    0,
-};
+/* Buffers */
+#define ETHERNET_BUF_MAX_SIZE (1024 * 2)
+// DHCP and DNS Buffer
+static uint8_t g_ethernet_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
+// NTP Request Buffer
+static uint8_t g_sntp_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
+// HTTP Receive Buffer
+static uint8_t g_http_r_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
+// HTTP Send Buffer
+static uint8_t g_http_s_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
+// HTTP Custom header field buffer
+static uint8_t g_http_h_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
 
 /* Timer */
 static volatile uint16_t g_msec_cnt = 0;
-
-/**
- * ----------------------------------------------------------------------------------------------------
- * Functions
- * ----------------------------------------------------------------------------------------------------
- */
 
 /* DHCP */
 static void wizchip_dhcp_init(void);
@@ -118,14 +86,9 @@ static void wizchip_dhcp_assign(void);
 static void wizchip_dhcp_conflict(void);
 
 /* Timer */
-static void repeating_timer_callback(void);
+static bool repeating_timer_callback(struct repeating_timer *t);
 static time_t millis(void);
 
-/**
- * ----------------------------------------------------------------------------------------------------
- * Main
- * ----------------------------------------------------------------------------------------------------
- */
 int main()
 {
     /* Initialize */
@@ -144,7 +107,9 @@ int main()
     wizchip_initialize();
     wizchip_check();
 
-    wizchip_1ms_timer_initialize(repeating_timer_callback);
+    // Register callback to run DHCP and DNS time handlers
+    static struct repeating_timer g_timer;
+    add_repeating_timer_us(-1000000, repeating_timer_callback, NULL, &g_timer);
 
     wizchip_dhcp_init();
     DNS_init(SOCKET_DNS, g_ethernet_buf);
@@ -159,7 +124,7 @@ int main()
         {
             if (g_dhcp_get_ip_flag == 0)
             {
-                printf(" DHCP success\n");
+                printf("DHCP success\n");
 
                 g_dhcp_get_ip_flag = 1;
                 break;
@@ -172,21 +137,20 @@ int main()
 
             if (dhcp_retry <= DHCP_RETRY_COUNT)
             {
-                printf(" DHCP timeout occurred and retry %d\n", dhcp_retry);
+                printf("DHCP timeout occurred and retry %d\n", dhcp_retry);
             }
         }
 
         if (dhcp_retry > DHCP_RETRY_COUNT)
         {
-            printf(" DHCP failed\n");
+            printf("DHCP failed\n");
 
             DHCP_stop();
 
-            while (1)
-                ;
+            while (1);
         }
 
-        wizchip_delay_ms(1000); // wait for 1 second
+        sleep_ms(1000);
     }
 
 
@@ -196,11 +160,9 @@ int main()
     /* Get DNS */
     if (DNS_run(g_net_info.dns, g_dns_target_domain, g_dns_target_ip) > 0)
     {
-        printf(" DNS success\n");
-        printf(" Target domain : %s\n", g_dns_target_domain);
-        printf(" IP of target domain : %d.%d.%d.%d\n", g_dns_target_ip[0], g_dns_target_ip[1], g_dns_target_ip[2], g_dns_target_ip[3]);
-
-        g_dns_get_ip_flag = 1;
+        printf("DNS success\n");
+        printf("Target domain : %s\n", g_dns_target_domain);
+        printf("IP of target domain : %d.%d.%d.%d\n", g_dns_target_ip[0], g_dns_target_ip[1], g_dns_target_ip[2], g_dns_target_ip[3]);
     }
     else
     {
@@ -209,7 +171,7 @@ int main()
     }
 
     /* Get time */
-    start_ms = millis();
+    absolute_time_t start_time = get_absolute_time();
     do
     {
         retval = SNTP_run(&time);
@@ -218,16 +180,16 @@ int main()
         {
             break;
         }
-    } while ((millis() - start_ms) < RECV_TIMEOUT);
+    } while (absolute_time_diff_us(get_absolute_time(), start_time) < RECV_TIMEOUT);
 
     if (retval != 1)
     {
-        printf(" SNTP failed : %d\n", retval);
+        printf("SNTP failed : %d\n", retval);
 
         while (1);
     }
 
-    printf(" %d-%02d-%02d, %02d:%02d:%02d\n", time.yy, time.mo, time.dd, time.hh, time.mm, time.ss);
+    printf("%d-%02d-%02d, %02d:%02d:%02d\n", time.yy, time.mo, time.dd, time.hh, time.mm, time.ss);
 
 
     httpc_init(SOCKET_HTTP, g_dns_target_ip, 80, g_http_s_buf, g_http_r_buf);
@@ -244,10 +206,12 @@ int main()
                 request.uri = (uint8_t *)g_http_target_uri;
                 request.host = (uint8_t *)g_dns_target_domain;
 
+                // unix timestamp
                 tstamp timeStamp = changedatetime_to_seconds() - 2208988800L; // Seconds since 1900 -> Seconds since 1970
                 uint8_t timeStamp_buf[32] = {0};
                 sprintf(timeStamp_buf, "%llu", timeStamp);
 
+                // sign = AppId+AppSecret+Timestamp with sha512 encoded as hex
                 uint8_t secrets[129] = {0};
                 uint8_t sha_out[64] = {0};
                 uint16_t len = sprintf(secrets, "%s%s%s", APP_ID, APP_SECRET, timeStamp_buf);
@@ -277,22 +241,13 @@ int main()
     }
 
     /* Infinite loop */
-    while (1)
-    {
-        ; // nothing to do
-    }
+    while (1);
 }
-
-/**
- * ----------------------------------------------------------------------------------------------------
- * Functions
- * ----------------------------------------------------------------------------------------------------
- */
 
 /* DHCP */
 static void wizchip_dhcp_init(void)
 {
-    printf(" DHCP client running\n");
+    printf("DHCP client running\n");
 
     DHCP_init(SOCKET_DHCP, g_ethernet_buf);
 
@@ -312,33 +267,20 @@ static void wizchip_dhcp_assign(void)
     network_initialize(g_net_info); // apply from DHCP
 
     print_network_information(g_net_info);
-    printf(" DHCP leased time : %ld seconds\n", getDHCPLeasetime());
+    printf("DHCP leased time : %ld seconds\n", getDHCPLeasetime());
 }
 
 static void wizchip_dhcp_conflict(void)
 {
-    printf(" Conflict IP from DHCP\n");
+    printf("Conflict IP from DHCP\n");
 
     // halt or reset or any...
-    while (1)
-        ; // this example is halt.
+    while (1); // this example is halt.
 }
 
 /* Timer */
-static void repeating_timer_callback(void)
+static bool repeating_timer_callback(struct repeating_timer *t)
 {
-    g_msec_cnt++;
-
-    if (g_msec_cnt >= 1000 - 1)
-    {
-        g_msec_cnt = 0;
-
-        DHCP_time_handler();
-        DNS_time_handler();
-    }
-}
-
-static time_t millis(void)
-{
-    return g_msec_cnt;
+    DHCP_time_handler();
+    DNS_time_handler();
 }

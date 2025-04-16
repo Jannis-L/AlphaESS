@@ -20,21 +20,6 @@ target_link_libraries(IOLIBRARY_FILES PUBLIC
         hardware_clocks
         )
 
-# timer
-add_library(TIMER_FILES STATIC)
-
-target_sources(TIMER_FILES PUBLIC
-        ${PORT_DIR}/timer/timer.c
-        )
-
-target_include_directories(TIMER_FILES PUBLIC
-        ${PORT_DIR}/timer
-        )
-
-target_link_libraries(TIMER_FILES PRIVATE
-        pico_stdlib      
-        )
-
 
 # board
 add_library(BOARD_FILES STATIC)

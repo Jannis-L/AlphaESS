@@ -67,7 +67,6 @@ target_link_libraries(AlphaESS PRIVATE
     DHCP_FILES
     DNS_FILES
     SNTP_FILES
-    TIMER_FILES
 )
 
 # Add the standard include files to the build
