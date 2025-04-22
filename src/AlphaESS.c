@@ -1,95 +1,13 @@
 /**
+ * alphaESS.c
  * Jannis Lämmle
- * March 2025
  * To access the open.alphaess.com api using rp2040/2350 and w5500 ethernet module
  * Partially adapted from WIZnet Co.,Ltd, BSD-3-Clause
  */
 
-#include <stdio.h>
+#include "alphaESS.h"
 
-#include "port_common.h"
-
-#include "wizchip_conf.h"
-#include "w5x00_spi.h"
-#include "httpClient.h"
-
-#include "dhcp.h"
-#include "dns.h"
-#include "sntp.h"
-
-#include "mbedtls/sha512.h"
-
-#include "time.h"
-
-#include "string.h"
-
-// Contains:
-// #pragma once
-// #define APP_ID "xyz"
-// #define APP_SECRET "xyz"
-// #define APP_SN "xyz"
-#include "secrets.h"
-
-// Socket usages (8 Sockets available on W5500)
-#define SOCKET_DHCP 0
-#define SOCKET_DNS 1
-#define SOCKET_SNTP 2
-#define SOCKET_HTTP 3
-
-/* Retry count */
-#define DHCP_RETRY_COUNT 5
-#define RECV_TIMEOUT 10000000 // 10 seconds
-
-/* NTP */
-#define TIMEZONE 21 // UTC
-// The timeserver to use
-static uint8_t g_sntp_server_ip[4] = {216, 239, 35, 0}; // time.google.com
-
-// Default Network settings
-static wiz_NetInfo g_net_info =
-{
-    .mac = {0x00, 0x08, 0xDC, 0x12, 0x34, 0x56}, // MAC address
-    .ip = {192, 168, 11, 2},                     // IP address
-    .sn = {255, 255, 255, 0},                    // Subnet Mask
-    .gw = {192, 168, 11, 1},                     // Gateway
-    .dns = {8, 8, 8, 8},                         // DNS server
-    .dhcp = NETINFO_DHCP                         // DHCP enable/disable
-};
-
-/* DHCP */
-static uint8_t g_dhcp_get_ip_flag = 0;
-
-/* DNS */
-static uint8_t g_dns_target_domain[] = "openapi.alphaess.com";
-static uint8_t g_http_target_uri[] = "/api/getLastPowerData?sysSn=" APP_SN;
-static uint8_t g_dns_target_ip[4] = { 0, };
-
-/* Buffers */
-#define ETHERNET_BUF_MAX_SIZE (1024 * 2)
-// DHCP and DNS Buffer
-static uint8_t g_ethernet_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
-// NTP Request Buffer
-static uint8_t g_sntp_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
-// HTTP Receive Buffer
-static uint8_t g_http_r_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
-// HTTP Send Buffer
-static uint8_t g_http_s_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
-// HTTP Custom header field buffer
-static uint8_t g_http_h_buf[ETHERNET_BUF_MAX_SIZE] = { 0, };
-
-/* Timer */
-static volatile uint16_t g_msec_cnt = 0;
-
-/* DHCP */
-static void wizchip_dhcp_init(void);
-static void wizchip_dhcp_assign(void);
-static void wizchip_dhcp_conflict(void);
-
-/* Timer */
-static bool repeating_timer_callback(struct repeating_timer *t);
-static time_t millis(void);
-
-int main()
+bool alphaESS_run()
 {
     /* Initialize */
     uint8_t retval = 0;
@@ -97,8 +15,6 @@ int main()
     uint8_t dns_retry = 0;
     uint32_t start_ms = 0;
     datetime time;
-
-    stdio_init_all();
 
     wizchip_spi_initialize();
     wizchip_cris_initialize();
@@ -122,17 +38,12 @@ int main()
 
         if (retval == DHCP_IP_LEASED)
         {
-            if (g_dhcp_get_ip_flag == 0)
-            {
-                printf("DHCP success\n");
+            printf("DHCP success\n");
 
-                g_dhcp_get_ip_flag = 1;
-                break;
-            }
+            break;
         }
         else if (retval == DHCP_FAILED)
         {
-            g_dhcp_get_ip_flag = 0;
             dhcp_retry++;
 
             if (dhcp_retry <= DHCP_RETRY_COUNT)
@@ -147,10 +58,10 @@ int main()
 
             DHCP_stop();
 
-            while (1);
+            return false;
         }
 
-        sleep_ms(1000);
+        sleep_ms(100);
     }
 
 
@@ -186,7 +97,7 @@ int main()
     {
         printf("SNTP failed : %d\n", retval);
 
-        while (1);
+        return false;
     }
 
     printf("%d-%02d-%02d, %02d:%02d:%02d\n", time.yy, time.mo, time.dd, time.hh, time.mm, time.ss);
@@ -220,14 +131,15 @@ int main()
                     sprintf(secrets + 2*i, "%02x", sha_out[i]);
                 }
                 
+                g_http_h_buf[0] = 0;
                 httpc_add_customHeader_field(g_http_h_buf, "appId", APP_ID);
                 httpc_add_customHeader_field(g_http_h_buf, "timeStamp", timeStamp_buf);
                 httpc_add_customHeader_field(g_http_h_buf, "sign", secrets);
                 httpc_send_header(&request, g_http_r_buf, g_http_h_buf, 0);
                 send_success = true;
             }
-		    if(httpc_isReceived > 0)
-		    {
+            if(httpc_isReceived > 0)
+            {
                 uint16_t len = httpc_recv(g_http_r_buf, httpc_isReceived);
 
                 printf(" >> HTTP Response - Received len: %d\r\n", len);
@@ -236,12 +148,11 @@ int main()
                 printf("\r\n");
                 printf("======================================================\r\n");
                 break;
-			}
+            }
         }
     }
 
-    /* Infinite loop */
-    while (1);
+    return true;
 }
 
 /* DHCP */

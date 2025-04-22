@@ -43,8 +43,9 @@ add_subdirectory(${PORT_DIR})
 
 
 add_executable(AlphaESS
-    src/AlphaESS.c
+    src/alphaESS.c
     src/httpClient.c
+    src/main.c
 )
 
 
