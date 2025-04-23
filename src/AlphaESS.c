@@ -7,15 +7,7 @@
 
 #include "alphaESS.h"
 
-bool alphaESS_run()
-{
-    /* Initialize */
-    uint8_t retval = 0;
-    uint8_t dhcp_retry = 0;
-    uint8_t dns_retry = 0;
-    uint32_t start_ms = 0;
-    datetime time;
-
+bool alphaESS_setup(){
     wizchip_spi_initialize();
     wizchip_cris_initialize();
 
@@ -30,6 +22,14 @@ bool alphaESS_run()
     wizchip_dhcp_init();
     DNS_init(SOCKET_DNS, g_ethernet_buf);
     SNTP_init(SOCKET_SNTP, g_sntp_server_ip, TIMEZONE, g_sntp_buf);
+}
+
+bool alphaESS_run()
+{
+    /* Initialize */
+    uint8_t retval = 0;
+    uint8_t dhcp_retry = 0;
+    datetime time;
 
     /* Lease DHCP */
     while (1)

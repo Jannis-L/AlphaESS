@@ -82,7 +82,10 @@ static volatile uint16_t g_msec_cnt = 0;
 static void wizchip_dhcp_init();
 static void wizchip_dhcp_assign();
 static void wizchip_dhcp_conflict();
+
+/* Functions */
 bool alphaESS_run();
+bool alphaESS_setup();
 
 /* Timer */
 static bool repeating_timer_callback(struct repeating_timer *t);
